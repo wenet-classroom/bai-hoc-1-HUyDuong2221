@@ -27,6 +27,7 @@ cleanup() {
     echo ""
     echo "Cleaning up..."
     docker rm -f $CONTAINER_NAME 2>/dev/null || true
+    docker rm -f postgres-test 2>/dev/null || true
     docker rmi -f $IMAGE_NAME 2>/dev/null || true
 }
 
@@ -68,10 +69,28 @@ else
     echo -e "${GREEN}PASS${NC}: Image size is acceptable"
 fi
 
-# Test 4: Run the container
+# Test 4: Start PostgreSQL and run the container
 echo ""
-echo "Test 4: Starting container..."
-if docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_NAME > /dev/null; then
+echo "Test 4: Starting PostgreSQL and application container..."
+docker run -d --name postgres-test \
+    -e POSTGRES_USER=postgres \
+    -e POSTGRES_PASSWORD=postgres \
+    -e POSTGRES_DB=classroom_db \
+    -p 5432:5432 \
+    postgres:16-alpine
+sleep 5
+
+PG_HOST=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' postgres-test)
+
+if docker run -d --name $CONTAINER_NAME -p 3000:3000 \
+    -e NODE_ENV=development \
+    -e PORT=3000 \
+    -e DB_HOST=$PG_HOST \
+    -e DB_PORT=5432 \
+    -e DB_NAME=classroom_db \
+    -e DB_USER=postgres \
+    -e DB_PASSWORD=postgres \
+    $IMAGE_NAME > /dev/null; then
     echo -e "${GREEN}PASS${NC}: Container started"
 else
     echo -e "${RED}FAIL${NC}: Container failed to start"
@@ -81,7 +100,7 @@ fi
 # Wait for application to be ready
 echo ""
 echo "Waiting for application to be ready..."
-sleep 3
+sleep 5
 
 # Test 5: Check if container is running
 echo ""
